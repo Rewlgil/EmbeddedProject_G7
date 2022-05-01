@@ -9,10 +9,10 @@
 
 const String name[] = {"Paracetamol", "Andrographis", "Dextromethorphan", "Chlorpheniramine", "Fexofenadine", "Rew", "Siraphop", "Vespaiboon", "Focus", "Jirawat"};
 const uint8_t no[] = {4, 5, 6, 7, 8, 9, 2, 3, 1, 7};
-const uint16_t time[10][3] = { {900, 1500, 0}, 
-                               {800, 1200, 1341},
-                               {800, 1341},
-                               {800, 1200, 1341},
+const uint16_t time[10][3] = { {900, 1500, 0},
+                               {800, 1200, 1637},
+                               {800, 1637},
+                               {800, 1200, 1637},
                                {1200, 0, 0},
                                {0, 0, 0},
                                {0, 0, 0},
@@ -36,6 +36,7 @@ char key = ' ';
 uint16_t alarm = 0;
 uint32_t checkAlarmTime = 0;
 uint32_t startTime = 0;
+uint32_t updateTime = 0;
 
 void print2digits(int number);
 void displayDate();
@@ -64,7 +65,7 @@ void setup()
   lcd.print("Date:");
 
   RTC.begin();
-  RTC.adjust(DateTime(__DATE__, __TIME__)); 
+  // RTC.adjust(DateTime(__DATE__, __TIME__)); 
 
   ITimer3.init();   // timer 3 for 7-segment display and keypad scan
   ITimer3.attachInterruptInterval(5, Timer3ISR);
@@ -149,30 +150,43 @@ void loop()
     setScreenTime = millis();
   }
   
-  if (millis() - checkAlarmTime > 1000)
+  if ((millis() - updateTime) > 1000)
+  {
+    displayTime();
+    updateTime = millis();
+  }
+  
+  if ((millis() - checkAlarmTime) > 60000)
   {
     displayTime();
     checkAlarm();
     if (alarm != 0)
     {
-      // alert
-      tone(3, 1000);
-      for (uint8_t i = 0; i < 16; i++)  // read alarm flag
+      key = ' ';
+      while (key != 'H')
       {
-        if ((1 << i) & alarm)
+        // alert
+        if (key != 'K') tone(3, 1000);
+        for (uint8_t i = 0; i < 16; i++)  // read alarm flag
         {
-          lcd.clear();
-          lcd.setCursor(0, 0);
-          lcd.print(i+1);   lcd.print(".");
-          lcd.print(name[i]);
-          lcd.setCursor(0, 1);
-          lcd.print("#");   lcd.print(no[i]);
-        }
-        if (key == 'K')
-        {
-          noTone(3);
-          key = 'H';
-          break;
+
+          if (((1 << i) & alarm))
+          { 
+            page = 3;
+            lcd.clear();
+            lcd.setCursor(0, 0);
+            lcd.print(i+1);   lcd.print(".");
+            lcd.print(name[i]);
+            lcd.setCursor(0, 1);
+            lcd.print("#");   lcd.print(no[i]);
+            startTime = millis();
+          }
+          while((millis() - startTime) < 1000)
+          {
+            if      (key == 'K')    noTone(3);  
+            else if (key == 'H')  { noTone(3);  break; }
+          }
+          if (key == 'H')   break;
         }
       }
       alarm = 0;
