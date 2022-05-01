@@ -3,18 +3,16 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <RTClib.h>
-#define USE_TIMER_4 true
 #define USE_TIMER_3 true
 #include <TimerInterrupt.h>
-#include <ISR_Timer.h>
 #include <PinChangeInterrupt.h>
 
 const String name[] = {"Paracetamol", "Andrographis", "Dextromethorphan", "Chlorpheniramine", "Fexofenadine", "Rew", "Siraphop", "Vespaiboon", "Focus", "Jirawat"};
 const uint8_t no[] = {4, 5, 6, 7, 8, 9, 2, 3, 1, 7};
 const uint16_t time[10][3] = { {900, 1500, 0}, 
-                               {800, 1200, 130},
-                               {800, 130},
-                               {800, 1200, 130},
+                               {800, 1200, 1341},
+                               {800, 1341},
+                               {800, 1200, 1341},
                                {1200, 0, 0},
                                {0, 0, 0},
                                {0, 0, 0},
@@ -36,16 +34,14 @@ volatile uint8_t activeRow = 0;
 char key = ' ';
 
 uint16_t alarm = 0;
-
-ISR_Timer ISR_timer;
+uint32_t checkAlarmTime = 0;
+uint32_t startTime = 0;
 
 void print2digits(int number);
 void displayDate();
 void displayTime();
 void displayTemp();
-// void TimerISRhandler() {ISR_timer.run();}
 void Timer3ISR();
-void Timer3ISR2();
 void PCINT_ISR();
 void viewDetail(int index);
 void checkAlarm();
@@ -71,10 +67,7 @@ void setup()
   RTC.adjust(DateTime(__DATE__, __TIME__)); 
 
   ITimer3.init();   // timer 3 for 7-segment display and keypad scan
-  // ITimer3.attachInterruptInterval(10, TimerISRhandler);
-  ITimer3.setInterval(5, Timer3ISR);
-  // ITimer4.setInterval(1025, Timer3ISR2);
-  // ITimer4.setInterval(1025, Timer3ISR2);
+  ITimer3.attachInterruptInterval(5, Timer3ISR);
 
   DDRA = 0xFF;    // set PORTA output for 7 segment pin
   DDRC = 0xF0;    // set PORTC output for 7 segment digit
@@ -94,7 +87,6 @@ bool start = false;
 
 void loop() 
 {
-  Timer3ISR2();
   if (page == 0 && key == '1')
   {
     key = ' ';
@@ -103,51 +95,90 @@ void loop()
     lcd.clear();
     lcd.setCursor(0 ,0);  lcd.print("Drug Lists");
     delay(2000);
-
-    while (page == 1)
+  }
+  if (page == 1)
+  {
+    if (key == 'D' || key == 'U' || start == true)
     {
-      if (key == 'D' || key == 'U' || start == true)
-      {
-        if (key == 'D' && scroll <= 7)        scroll += 2;
-        else if (key == 'U' && scroll >= 2)   scroll -= 2;
-        key = ' ';
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print(scroll);  lcd.print(".");
-        lcd.print(name[scroll - 1]);
+      if (key == 'D' && scroll <= 7)        scroll += 2;
+      else if (key == 'U' && scroll >= 2)   scroll -= 2;
+      key = ' ';
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(scroll);  lcd.print(".");
+      lcd.print(name[scroll - 1]);
 
-        lcd.setCursor(0, 1);
-        lcd.print(scroll + 1);  lcd.print(".");
-        lcd.print(name[scroll]);
-        start = false;
-      }
-      else if ((int)key - 48 > 0 && (int)key - 48 < 10)
-      {
-        select = (int)key - 48;
-        key = ' ';
-        viewDetail(select);
-      }
-      else if (key == 'H')
-      {
-        key = ' ';
-        page = 0;
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print("Temp:");
-        lcd.setCursor(8, 0);
-        lcd.print("Humid:");
-        lcd.setCursor(0, 1);
-        lcd.print("Date:");
-      }
+      lcd.setCursor(0, 1);
+      lcd.print(scroll + 1);  lcd.print(".");
+      lcd.print(name[scroll]);
+      start = false;
+    }
+    else if ((int)key - 48 > 0 && (int)key - 48 < 10)
+    {
+      select = (int)key - 48;
+      key = ' ';
+      viewDetail(select);
     }
   }
 
-  if (millis() - setScreenTime > 2000)
+  if (page == 2)
+  {
+    viewDetail(select);
+  }
+  
+  if (page != 0 && key == 'H')   // if press H return to home screen
+  {
+    key = ' ';
+    page = 0;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Temp:");
+    lcd.setCursor(8, 0);
+    lcd.print("Humid:");
+    lcd.setCursor(0, 1);
+    lcd.print("Date:");
+    displayDate();
+    displayTemp();
+    setScreenTime = millis();
+  }
+
+  if (millis() - setScreenTime > 2000 && page == 0)
   {
     displayDate();
     displayTemp();
     setScreenTime = millis();
-  }  
+  }
+  
+  if (millis() - checkAlarmTime > 1000)
+  {
+    displayTime();
+    checkAlarm();
+    if (alarm != 0)
+    {
+      // alert
+      tone(3, 1000);
+      for (uint8_t i = 0; i < 16; i++)  // read alarm flag
+      {
+        if ((1 << i) & alarm)
+        {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(i+1);   lcd.print(".");
+          lcd.print(name[i]);
+          lcd.setCursor(0, 1);
+          lcd.print("#");   lcd.print(no[i]);
+        }
+        if (key == 'K')
+        {
+          noTone(3);
+          key = 'H';
+          break;
+        }
+      }
+      alarm = 0;
+    }
+    checkAlarmTime = millis();
+  }
 }
 
 void print2digits(int number)
@@ -197,8 +228,6 @@ void displayTemp()
 
 void Timer3ISR()  // update 7segment & scan keypad
 {
-  // Serial.println("ISR3");
-
   // update 7 segment
   static uint8_t digit = 3;
 
@@ -219,31 +248,6 @@ void Timer3ISR()  // update 7segment & scan keypad
   else                  activeRow++;
 
   PORTH = (~(1 << (activeRow + 3))) & 0x78;
-}
-
-void Timer3ISR2()
-{
-  // Serial.println("ISR3-2");
-  displayTime();
-  checkAlarm();
-  if (alarm != 0)
-  {
-    // alert
-    for (uint8_t i = 0; i < 16; i++)
-    {
-      if ((1 << i) & alarm)
-      {
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print(i+1);   lcd.print(".");
-        lcd.print(name[i]);
-        lcd.setCursor(0, 1);
-        lcd.print("#");   lcd.print(no[i]);
-        delay(5000);
-      }
-    }
-    alarm = 0;
-  }
 }
 
 char botton[4][4] = { {'1', '2', '3', 'U'},
@@ -269,28 +273,32 @@ void PCINT_ISR()
 
 void viewDetail(int index)
 {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(index);  lcd.print(".");
-  lcd.print(name[index-1]);
-  lcd.setCursor(0, 1);
-  lcd.print("#");       lcd.print(no[index-1]);
-  lcd.setCursor(3, 1);
-  lcd.print("Time ");
-  uint8_t i = 0;
-  while (key == ' ')
+  static uint8_t i = 0;
+  if (page != 2)
   {
-    if (time[index-1][i] != 0)
-    {
-      lcd.setCursor(8, 1);
-      lcd.print(i + 1);   lcd.print(". ");
-      lcd.setCursor(11, 1);
-      print2digits(time[index-1][i] / 100);
-      lcd.print(":");
-      print2digits(time[index-1][i] % 100); 
-    }
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(index);  lcd.print(".");
+    lcd.print(name[index-1]);
+    lcd.setCursor(0, 1);
+    lcd.print("#");       lcd.print(no[index-1]);
+    lcd.setCursor(3, 1);
+    lcd.print("Time ");
+    page = 2;
+    startTime = millis();
+    i = 0;
+  }
+  
+  if (time[index-1][i] != 0 && (millis() - startTime) > 1000)
+  {
+    lcd.setCursor(8, 1);
+    lcd.print(i + 1);   lcd.print(". ");
+    lcd.setCursor(11, 1);
+    print2digits(time[index-1][i] / 100);
+    lcd.print(":");
+    print2digits(time[index-1][i] % 100); 
     if (++i > 2)  i = 0;
-    delay(1000);
+    startTime = millis();
   }
 }
 
