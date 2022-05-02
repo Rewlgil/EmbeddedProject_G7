@@ -1,5 +1,5 @@
 // Drug Timer
-// This programe objective is to alert patient to take drug
+// This program objective is to alert patient to take drug
 // on time and dose that are programmed
 // This code is part of Final Project 2102444 Introduction to Embedded Systems
 // semaster2 2021 Department of Electrical Engineering, Chulalongkorn University
